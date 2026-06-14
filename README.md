@@ -48,7 +48,10 @@ source .env                   # or export vars individually
 cd backend && uvicorn api.main:app --reload --port 8000
 
 # Frontend (separate terminal)
-cd frontend && npm install && npm run dev   # http://localhost:5173
+cd frontend
+rm -rf node_modules   # drop any node_modules from another environment
+npm ci                # reproducible install from package-lock.json
+npm run dev           # http://localhost:5173
 ```
 
 ## API (spec §5)
@@ -81,6 +84,40 @@ A personalization layer that applies stored preferences as explicit constraint m
 - **Feasibility pre-check**: total demand vs total capacity is verified before the solver runs, so obvious data errors fail fast with a readable message.
 - **Explanations can't hallucinate**: a deterministic digest converts variable values back into decisions; the optional LLM pass only rephrases that digest.
 - **Provider-agnostic**: `parser/llm_adapter.py` exposes one `complete_json` interface with Anthropic, OpenAI, and an offline `DeterministicStub` used by the test suite.
+
+## Packaging / distributing a zip
+
+Before zipping for handoff, run the cleanup script from the repo root:
+
+```bash
+bash scripts/clean-for-handoff.sh
+```
+
+This removes everything that must not be shipped:
+
+| Path | Why |
+|---|---|
+| `frontend/node_modules/` | Native binaries compiled for your OS — breaks on the recipient's machine |
+| `frontend/dist/` | Generated build output — recipient builds it themselves |
+| `backend/eigenstate.db` | Contains live session rows, tokens, and uploaded data |
+| `feedback_log.json` | Runtime state |
+| `__pycache__/`, `.pytest_cache/`, `.mypy_cache/`, `.ruff_cache/` | Generated caches |
+| `.claude/` | Local editor/agent state |
+
+Then zip, excluding `.git` (omit `--exclude` if you intentionally want to share history):
+
+```bash
+zip -r ../eigenstate.zip . --exclude '*.git*'
+```
+
+Recipients unpack and build from scratch:
+
+```bash
+cd frontend
+rm -rf node_modules
+npm ci
+npm run build
+```
 
 ## Tests
 

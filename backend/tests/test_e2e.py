@@ -9,6 +9,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from parser.llm_adapter import DeterministicStub
 from api.pipeline import (GateError, confirm_column_mapping, resolve_ambiguities,
                           run_parse, run_solve)
+from api.errors import ModelValidationError
 from api.session_store import SessionStore
 from spec.enums import SessionStage
 import pytest
@@ -118,6 +119,7 @@ SCHEDULING_SPEC = {
 }
 
 
+@pytest.mark.ortools
 def test_scheduling_e2e():
     s = make_session()
     run_parse(s, "Schedule 3 jobs on 2 machines minimizing makespan",
@@ -230,6 +232,7 @@ def test_feasibility_precheck_catches_overload():
     ]}
     s = make_session()
     run_parse(s, "Assign packages to vans", DeterministicStub([spec]))
-    run_solve(s)
+    with pytest.raises(ModelValidationError):
+        run_solve(s)
     assert s.stage == SessionStage.FAILED
     assert "exceeds total" in s.error

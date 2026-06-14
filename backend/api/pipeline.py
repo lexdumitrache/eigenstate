@@ -5,11 +5,11 @@ from __future__ import annotations
 
 import threading
 
-from parser.column_mapper import (read_table, rows_to_entities, classify_table)
+from parser.column_mapper import (read_table, rows_to_entities, rows_to_global_params, classify_table)
 from spec.schema import CalendarTable, ColumnMapping, PairwiseCostTable, RelationshipTable
 from parser.llm_adapter import LLMAdapter, LLMError
 from parser.parser import ParseError as _LLMParseError, parse_problem
-from spec.enums import SessionStage, ProblemType, ObjectiveSense
+from spec.enums import SessionStage, ProblemType, ObjectiveSense, TableRole
 from validation.validator import validate_spec
 from modeling.builder import build_model, UnsupportedConstraintError
 from solvers.solver_router import route_and_solve
@@ -70,10 +70,10 @@ def run_parse(session: Session, text: str, adapter: LLMAdapter) -> None:
         if isinstance(table, PairwiseCostTable):
             spec.pairwise_tables.append(table)
         elif isinstance(table, RelationshipTable):
-            table.confirmed = True  # no modeling use yet; stored for future use
+            table.confirmed = True
             spec.relationship_tables.append(table)
         elif isinstance(table, CalendarTable):
-            table.confirmed = True  # no modeling use yet; stored for future use
+            table.confirmed = True
             spec.calendar_tables.append(table)
         else:  # ColumnMapping (entity or parameter)
             spec.column_mappings.append(table)
@@ -100,11 +100,14 @@ def confirm_column_mapping(session: Session, file_name: str,
     if id_column is not None:
         mapping.id_column = id_column
     mapping.confirmed = True
-    session.spec.entities = [e for e in session.spec.entities
-                             if not (e.category == mapping.entity_category
-                                     and e.source_file == file_name)]
-    session.spec.entities.extend(
-        rows_to_entities(mapping, session.file_rows[file_name]))
+    rows = session.file_rows[file_name]
+    if mapping.table_role == TableRole.PARAMETER:
+        session.spec.global_params.update(rows_to_global_params(mapping, rows))
+    else:
+        session.spec.entities = [e for e in session.spec.entities
+                                 if not (e.category == mapping.entity_category
+                                         and e.source_file == file_name)]
+        session.spec.entities.extend(rows_to_entities(mapping, rows))
     session.recompute_stage_after_parse()
 
 
@@ -228,8 +231,44 @@ def run_solve(session: Session, adapter: LLMAdapter | None = None,
             if agent_id and task_id:
                 cost_table[(agent_id, task_id)] = cost
 
+    calendar_windows: dict[str, tuple[int, int]] = {}
+    for cal in spec.calendar_tables:
+        if not cal.confirmed:
+            continue
+        for row in session.file_rows.get(cal.file_name, []):
+            entity_id = str(row.get(cal.entity_column, ""))
+            if not entity_id:
+                continue
+            try:
+                start = int(float(row[cal.start_column])) if cal.start_column and cal.start_column in row else None
+                end = int(float(row[cal.end_column])) if cal.end_column and cal.end_column in row else None
+            except (TypeError, ValueError):
+                continue
+            if start is not None or end is not None:
+                calendar_windows[entity_id] = (start or 0, end or 0)
+
+    allowed_pairs: set[tuple[str, str]] = set()
+    for rt in spec.relationship_tables:
+        if not rt.confirmed:
+            continue
+        for row in session.file_rows.get(rt.file_name, []):
+            from_id = str(row.get(rt.from_column, ""))
+            to_id = str(row.get(rt.to_column, ""))
+            if from_id and to_id:
+                allowed_pairs.add((from_id, to_id))
+
+    entities_data: dict = {}
+    if cost_table:
+        entities_data["cost_tables"] = cost_table
+    if spec.global_params:
+        entities_data["global_params"] = spec.global_params
+    if calendar_windows:
+        entities_data["calendar_windows"] = calendar_windows
+    if allowed_pairs:
+        entities_data["allowed_pairs"] = allowed_pairs
+
     try:
-        prob, variables = build_model(spec, {"cost_tables": cost_table} if cost_table else {})
+        prob, variables = build_model(spec, entities_data)
     except (UnsupportedConstraintError, ValueError) as e:
         session.stage = SessionStage.FAILED
         session.error = str(e)

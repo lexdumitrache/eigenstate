@@ -6,8 +6,6 @@ makespan (or weighted completion if a coefficient_field is given).
 """
 from __future__ import annotations
 
-from ortools.sat.python import cp_model
-
 from spec.enums import ObjectiveSense
 from spec.schema import Constraint, Entity, OptimizationSpec
 
@@ -26,6 +24,7 @@ class SchedulingModelBuilder:
     name = "scheduling"
 
     def init_model(self, spec: OptimizationSpec, _data: dict):
+        from ortools.sat.python import cp_model  # lazy: avoids crash at import time
         model = cp_model.CpModel()
         dur_field = "duration"
         for c in spec.constraints:
@@ -43,12 +42,18 @@ class SchedulingModelBuilder:
         )
         horizon = max(sum_dur, max_deadline) or 1
 
+        cal_wins: dict[str, tuple[int, int]] = _data.get("calendar_windows", {})
         starts, ends, intervals = {}, {}, {}
         for t in tasks:
             d = _duration(t, dur_field)
-            release = int(float(t.attributes.get("release_time", 0)))
-            deadline = int(float(t.attributes["deadline"])) \
-                if "deadline" in t.attributes else horizon
+            cal = cal_wins.get(t.id)
+            if cal:
+                release = cal[0]
+                deadline = cal[1] if cal[1] else horizon
+            else:
+                release = int(float(t.attributes.get("release_time", 0)))
+                deadline = int(float(t.attributes["deadline"])) \
+                    if "deadline" in t.attributes else horizon
             s = model.NewIntVar(release, deadline - d, f"start[{t.id}]")
             e = model.NewIntVar(release + d, deadline, f"end[{t.id}]")
             intervals[t.id] = model.NewIntervalVar(s, d, e, f"iv[{t.id}]")

@@ -46,6 +46,9 @@ export const api = {
   confirmMapping: (id, mapping) =>
     req(`/sessions/${id}/column-mapping`, { method: 'POST', body: JSON.stringify(mapping) }),
 
+  confirmPairwiseTable: (id, table) =>
+    req(`/sessions/${id}/pairwise-table`, { method: 'POST', body: JSON.stringify(table) }),
+
   clarify: (id, answers) =>
     req(`/sessions/${id}/clarify`, { method: 'POST', body: JSON.stringify({ answers }) }),
 
@@ -54,39 +57,45 @@ export const api = {
   solve: async (id, { signal } = {}) => {
     const { job_id } = await req(`/sessions/${id}/solve`, { method: 'POST' });
 
-    while (true) {
-      await new Promise((resolve, reject) => {
-        const t = setTimeout(resolve, POLL_INTERVAL_MS);
-        if (signal) {
-          signal.addEventListener('abort', () => {
-            clearTimeout(t);
-            reject(new DOMException('Aborted', 'AbortError'));
-          }, { once: true });
+    // Register the cancel handler immediately so an abort that fires during a
+    // poll tick (before we reach the aborted check) still reaches the backend.
+    const cancelBackend = () => api.cancelJob(job_id).catch(() => {});
+    signal?.addEventListener('abort', cancelBackend, { once: true });
+
+    try {
+      while (true) {
+        if (signal?.aborted) {
+          const err = new Error('Solve was cancelled.');
+          err.error_code = 'cancelled';
+          throw err;
         }
-      });
 
-      if (signal?.aborted) {
-        await api.cancelJob(job_id).catch(() => {});
-        const err = new Error('Solve was cancelled.');
-        err.error_code = 'cancelled';
-        throw err;
+        await new Promise(r => setTimeout(r, POLL_INTERVAL_MS));
+
+        if (signal?.aborted) {
+          const err = new Error('Solve was cancelled.');
+          err.error_code = 'cancelled';
+          throw err;
+        }
+
+        const job = await req(`/jobs/${job_id}`);
+
+        if (job.status === 'done') return job.session;
+
+        if (job.status === 'failed') {
+          const err = new Error(job.error || 'Solve failed.');
+          err.error_code = job.error_code || 'solver_error';
+          throw err;
+        }
+
+        if (job.status === 'cancelled') {
+          const err = new Error('Solve was cancelled.');
+          err.error_code = 'cancelled';
+          throw err;
+        }
       }
-
-      const job = await req(`/jobs/${job_id}`);
-
-      if (job.status === 'done') return job.session;
-
-      if (job.status === 'failed') {
-        const err = new Error(job.error || 'Solve failed.');
-        err.error_code = job.error_code || 'solver_error';
-        throw err;
-      }
-
-      if (job.status === 'cancelled') {
-        const err = new Error('Solve was cancelled.');
-        err.error_code = 'cancelled';
-        throw err;
-      }
+    } finally {
+      signal?.removeEventListener('abort', cancelBackend);
     }
   },
 

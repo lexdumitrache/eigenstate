@@ -74,7 +74,10 @@ def _per_entity_bound(prob, variables, c: Constraint, sense: str):
 
 def build_budget_limit(prob, variables, c: Constraint, _data):
     """Total allocated <= limit (dispatch: total pair cost <= limit)."""
-    limit = float(c.parameters.get("limit", 0))
+    gp = _data.get("global_params", {})
+    limit_val = c.parameters.get("limit") \
+        or gp.get("limit") or gp.get("budget") or gp.get("total_budget")
+    limit = float(limit_val or 0)
     if variables["mode"] == "dispatch":
         x, agents, tasks = variables["x"], variables["agents"], variables["tasks"]
         cost_f = c.parameters.get("demand_field") or c.parameters.get("resource_field")

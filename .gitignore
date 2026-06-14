@@ -11,3 +11,4 @@ feedback_log.json
 *.db
 *.sqlite3
 .DS_Store
+.claude/

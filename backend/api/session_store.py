@@ -197,4 +197,6 @@ class SQLiteSessionStore:
                 )
 
 
+SessionStore = SQLiteSessionStore
+
 store = SQLiteSessionStore()

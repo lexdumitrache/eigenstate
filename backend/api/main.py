@@ -4,6 +4,7 @@ POST /api/sessions                      → create session
 POST /api/sessions/{id}/files           → upload CSV/Excel (before parse)
 POST /api/sessions/{id}/parse           → run parser
 POST /api/sessions/{id}/column-mapping  → confirm/edit column mappings
+POST /api/sessions/{id}/pairwise-table  → confirm/edit pairwise cost-table mapping
 POST /api/sessions/{id}/clarify         → resolve ambiguities
 POST /api/sessions/{id}/solve           → enqueue background solve job
 GET  /api/jobs/{job_id}                 → poll job status / fetch result
@@ -72,6 +73,15 @@ class MappingRequest(BaseModel):
     column_to_field: dict[str, str] | None = None
     entity_category: str | None = None
     id_column: str | None = None
+
+
+class PairwiseTableRequest(BaseModel):
+    file_name: str
+    agent_column: str | None = None
+    task_column: str | None = None
+    cost_column: str | None = None
+    agent_category: str | None = None
+    task_category: str | None = None
 
 
 class ClarifyRequest(BaseModel):
@@ -188,6 +198,25 @@ def column_mapping(
     try:
         pipeline.confirm_column_mapping(s, body.file_name, body.column_to_field,
                                         body.entity_category, body.id_column)
+    except pipeline.GateError as e:
+        raise HTTPException(409, str(e))
+    store.save(s)
+    return _state(s)
+
+
+@app.post("/api/sessions/{session_id}/pairwise-table")
+def pairwise_table(
+    session_id: str,
+    body: PairwiseTableRequest,
+    x_session_token: str | None = Header(None),
+):
+    s = _session_or_404(session_id)
+    _verify_token(s, x_session_token)
+    try:
+        pipeline.confirm_pairwise_table(
+            s, body.file_name, body.agent_column, body.task_column,
+            body.cost_column, body.agent_category, body.task_category,
+        )
     except pipeline.GateError as e:
         raise HTTPException(409, str(e))
     store.save(s)

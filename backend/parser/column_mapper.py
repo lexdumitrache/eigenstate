@@ -2,9 +2,11 @@
 
 The LLM classifies each uploaded file into one of five roles (entity,
 relationship, cost_matrix, calendar, parameter) and suggests column mappings.
-The user must confirm entity and cost-matrix mappings before rows become
-Entities; relationship and calendar tables are auto-confirmed and stored for
-future modeling use.
+Entity and cost-matrix mappings require user confirmation before rows are
+ingested. Relationship and calendar tables are auto-confirmed at parse time;
+their rows are extracted at solve time into allowed_pairs and calendar_windows
+respectively. Parameter tables are confirmed like entity tables but their rows
+become global_params instead of entities.
 """
 from __future__ import annotations
 
@@ -183,6 +185,21 @@ def _coerce(value):
         return int(f) if f.is_integer() else f
     except ValueError:
         return s
+
+
+def rows_to_global_params(mapping: ColumnMapping, rows: list[dict]) -> dict[str, str | float | int]:
+    """Flatten parameter table rows into a global config dict.
+
+    Each (column, field) pair in column_to_field is extracted from every row;
+    later rows overwrite earlier ones for duplicate field names.
+    """
+    params: dict[str, str | float | int] = {}
+    for row in rows:
+        for col, field in mapping.column_to_field.items():
+            val = row.get(col)
+            if val is not None:
+                params[field] = _coerce(val)
+    return params
 
 
 def rows_to_entities(mapping: ColumnMapping, rows: list[dict]) -> list[Entity]:

@@ -3,6 +3,7 @@ import { api, setSessionToken } from './api';
 import PipelineStepper from './components/PipelineStepper';
 import ProblemInput from './components/ProblemInput';
 import ColumnMappingDialog from './components/ColumnMappingDialog';
+import PairwiseTableDialog from './components/PairwiseTableDialog';
 import ClarificationDialog from './components/ClarificationDialog';
 import ModelViewer from './components/ModelViewer';
 import ModelEditor from './components/ModelEditor';
@@ -37,6 +38,9 @@ export default function App() {
 
   const handleMapping = (mapping) =>
     guard(() => api.confirmMapping(session.session_id, mapping));
+
+  const handlePairwiseTable = (table) =>
+    guard(() => api.confirmPairwiseTable(session.session_id, table));
 
   const handleClarify = (answers) =>
     guard(() => api.clarify(session.session_id, answers));
@@ -91,6 +95,11 @@ export default function App() {
             <ColumnMappingDialog
               mappings={session.spec.column_mappings}
               onConfirm={handleMapping}
+              busy={busy}
+            />
+            <PairwiseTableDialog
+              tables={session.spec.pairwise_tables}
+              onConfirm={handlePairwiseTable}
               busy={busy}
             />
             {stage !== 'awaiting_column_mapping' && (

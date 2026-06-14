@@ -118,6 +118,7 @@ class OptimizationSpec(BaseModel):
     pairwise_tables: list[PairwiseCostTable] = Field(default_factory=list)
     relationship_tables: list[RelationshipTable] = Field(default_factory=list)
     calendar_tables: list[CalendarTable] = Field(default_factory=list)
+    global_params: dict[str, str | float | int] = Field(default_factory=dict)
     roles: Roles | None = None          # explicit agent/task split for assignment
     confidence: float = Field(ge=0, le=1, default=0.5)
     ready_to_solve: bool = False

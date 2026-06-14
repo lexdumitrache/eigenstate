@@ -164,11 +164,19 @@ def build_time_budget_assignment(prob, variables, c: Constraint, _data):
 def build_compatibility_assignment(prob, variables, c: Constraint, _data):
     """Force x[i,j] = 0 whenever agent and task are incompatible.
 
-    Compatibility is determined by matching agent_field against task_field.
-    Both fields may contain comma-separated lists; any overlap means compatible.
-    If the task has no requirement (task_field absent), it accepts any agent.
+    Two complementary checks:
+    1. Relationship table allowed_pairs: if present, any pair NOT in the set is blocked.
+    2. Field-based: agent_field vs task_field attribute matching (comma-separated lists).
     """
     x, agents, tasks = variables["x"], variables["agents"], variables["tasks"]
+
+    allowed_pairs: set[tuple[str, str]] | None = _data.get("allowed_pairs")
+    if allowed_pairs is not None:
+        for a in agents:
+            for t in tasks:
+                if (a.id, t.id) not in allowed_pairs:
+                    prob += x[a.id, t.id] == 0, f"{c.name}_rel[{a.id},{t.id}]"
+
     agent_field = str(_scalar(c.parameters, "agent_field", default="skills"))
     task_field = str(_scalar(c.parameters, "task_field", default="required_skill"))
     for a in agents:
@@ -183,4 +191,4 @@ def build_compatibility_assignment(prob, variables, c: Constraint, _data):
                 continue  # no requirement → compatible with everyone
             task_vals = {v.strip() for v in str(raw_t).split(",") if v.strip()}
             if not (agent_vals & task_vals):
-                prob += x[a.id, t.id] == 0, f"{c.name}[{a.id},{t.id}]"
+                prob += x[a.id, t.id] == 0, f"{c.name}_field[{a.id},{t.id}]"

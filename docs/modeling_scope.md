@@ -32,14 +32,35 @@ Solver: **OR-Tools CP-SAT** (`modeling/scheduling_model.py`)
 
 Constraints are typed against a fixed enum in `spec/enums.py`. The LLM emits `{constraint_type, parameters}`; the builder maps each `(problem_type, constraint_type)` pair to a hand-written function. A constraint the LLM extracts that falls outside this map becomes a blocking ambiguity — it is never silently dropped.
 
-Key constraint types:
-- `max_assignments_per_agent`, `min_assignments_per_agent`
-- `capacity`, `demand`
-- `availability` (binary mask per agent/slot)
-- `precedence` (task A before task B)
-- `no_overlap`
-- `shift_length`, `max_hours`
-- `budget` (allocation ceiling)
+| Constraint type | Description |
+|---|---|
+| `one_per_entity` | Each worker/van does at most (or exactly) N tasks |
+| `demand_coverage` | Each task/shift/package must be covered by exactly one agent |
+| `capacity` | Resource/worker capacity ceiling; for scheduling, limits concurrent tasks (cumulative) |
+| `time_budget` | Max hours or time units per entity (assignment/allocation) or a global finish deadline (scheduling) |
+| `budget_limit` | Total spend must not exceed a budget ceiling (allocation) |
+| `min_allocation` | An entity must receive at least X units (allocation) |
+| `max_allocation` | An entity must receive at most X units (allocation) |
+| `no_overlap` | No two tasks may run at the same time on the same resource (scheduling) |
+| `precedence` | Task A must end before task B starts (scheduling) |
+| `compatibility` | `x[i,j] = 0` when agent and task fields don't match (assignment/allocation) |
+
+### Which constraints apply to which problem types
+
+| Constraint type | Assignment | Allocation | Scheduling |
+|---|:---:|:---:|:---:|
+| `one_per_entity` | ✓ | ✓ | |
+| `demand_coverage` | ✓ | ✓ | ✓ |
+| `capacity` | ✓ | ✓ | ✓ |
+| `time_budget` | ✓ | ✓ | ✓ |
+| `budget_limit` | | ✓ | |
+| `min_allocation` | | ✓ | |
+| `max_allocation` | | ✓ | |
+| `no_overlap` | | | ✓ |
+| `precedence` | | | ✓ |
+| `compatibility` | ✓ | ✓ | |
+
+A constraint type used outside its supported problem family is surfaced to the user as an ambiguity; it is never silently dropped or coerced.
 
 ## What is explicitly out of scope (v1)
 
@@ -62,10 +83,16 @@ For an objective field (e.g. `cost`), the builder resolves the per-pair coeffici
 3. `cost` attribute on the agent
 4. Default: `1.0`
 
+## Implemented v1 features
+
+These features are fully implemented and active:
+
+- **Persistent sessions** — `SQLiteSessionStore` (`api/session_store.py`) backs all sessions with SQLite. Sessions survive restarts and are preloaded into a memory cache on startup. The `EIGENSTATE_DB` environment variable overrides the database path.
+- **Pairwise cost tables** — `COST_MATRIX` is a first-class `TableRole`. The parser suggests agent/task column mappings for uploaded cost matrices; the user confirms via `POST /api/sessions/{id}/pairwise-table`. The solver reads confirmed tables to resolve per-pair objective coefficients.
+- **Clarification gate** — when the LLM flags unresolved ambiguities, the session enters `AWAITING_CLARIFICATION` and the solve endpoint is blocked until `POST /api/sessions/{id}/clarify` is called. Clarification answers are applied as explicit spec mutations (not just gating) before the model is built.
+
 ## v2 additions planned
 
 - Vehicle routing (OR-Tools Routing Library)
-- Persistent session store (in-memory `SessionStore` is already interface-compatible with a Redis swap)
-- Pairwise cost tables as a first-class upload type
 - Solver sensitivity reports (shadow prices, slack)
-- Clarification answers applied as explicit model transformations (not just gating)
+- Multi-objective optimisation

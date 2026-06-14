@@ -18,11 +18,11 @@ export default function FeedbackPanel({ decisions, sessionId, onSubmit, busy }) 
       <section className="card feedback-card">
         <h2>Feedback recorded</h2>
         <p style={{ color: 'var(--ink-soft)' }}>
-          Thanks — we'll apply your preferences to future solves.
+          Thanks — we'll remember this feedback and surface it in future explanations.
         </p>
         {inferredPrefs.length > 0 && (
           <>
-            <p style={{ marginTop: '12px', fontWeight: 600 }}>Learned preferences:</p>
+            <p style={{ marginTop: '12px', fontWeight: 600 }}>Noted preferences (used in explanations):</p>
             <ul className="decision-list">
               {inferredPrefs.map((p, i) => <li key={i}>{p}</li>)}
             </ul>
@@ -78,7 +78,7 @@ export default function FeedbackPanel({ decisions, sessionId, onSubmit, busy }) 
     <section className="card feedback-card">
       <h2>Was this plan helpful?</h2>
       <p style={{ color: 'var(--ink-soft)', marginBottom: '16px' }}>
-        Your feedback is stored and applied to future solves of similar problems.
+        Your feedback is stored and surfaced in future explanations. It does not change the optimizer.
       </p>
 
       <div className="feedback-acceptance">

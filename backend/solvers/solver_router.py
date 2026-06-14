@@ -5,7 +5,6 @@ from __future__ import annotations
 import time
 
 import pulp
-from ortools.sat.python import cp_model
 
 from spec.enums import ProblemType, SolverStatus
 from spec.schema import OptimizationSpec, SolveResult
@@ -50,15 +49,13 @@ def solve_pulp(prob: pulp.LpProblem, variables: dict,
     )
 
 
-_CPSAT_STATUS = {
-    cp_model.OPTIMAL: SolverStatus.OPTIMAL,
-    cp_model.FEASIBLE: SolverStatus.FEASIBLE,
-    cp_model.INFEASIBLE: SolverStatus.INFEASIBLE,
-}
-
-
-def solve_cpsat(model: cp_model.CpModel, variables: dict,
-                time_limit_s: int = 30) -> SolveResult:
+def solve_cpsat(model, variables: dict, time_limit_s: int = 30) -> SolveResult:
+    from ortools.sat.python import cp_model  # lazy: avoids crash at import time
+    _CPSAT_STATUS = {
+        cp_model.OPTIMAL: SolverStatus.OPTIMAL,
+        cp_model.FEASIBLE: SolverStatus.FEASIBLE,
+        cp_model.INFEASIBLE: SolverStatus.INFEASIBLE,
+    }
     solver = cp_model.CpSolver()
     solver.parameters.max_time_in_seconds = time_limit_s
     t0 = time.perf_counter()
